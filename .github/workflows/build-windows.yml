@@ -89,54 +89,56 @@ jobs:
           $releaseDir = "${{ env.RELEASE_DIR }}"
           $version    = "${{ env.VERSION }}"
           $absDir     = (Resolve-Path $releaseDir).Path
+          $appId      = '{{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}'
 
-          # AppId written separately to avoid YAML parsing the braces
-          $appId = '{{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}'
+          $iss = "[Setup]`r`n"
+          $iss += "AppId=$appId`r`n"
+          $iss += "AppName=VSLA Desktop`r`n"
+          $iss += "AppVersion=$version`r`n"
+          $iss += "AppPublisher=VSLA`r`n"
+          $iss += "DefaultDirName={autopf}\VSLA Desktop`r`n"
+          $iss += "DefaultGroupName=VSLA Desktop`r`n"
+          $iss += "AllowNoIcons=yes`r`n"
+          $iss += "OutputDir=installer\output`r`n"
+          $iss += "OutputBaseFilename=VSLA-Desktop-Setup-v$version`r`n"
+          $iss += "Compression=lzma2/ultra64`r`n"
+          $iss += "SolidCompression=yes`r`n"
+          $iss += "WizardStyle=modern`r`n"
+          $iss += "DisableProgramGroupPage=yes`r`n"
+          $iss += "UninstallDisplayIcon={app}\$exeName`r`n"
+          $iss += "UninstallDisplayName=VSLA Desktop`r`n"
+          $iss += "MinVersion=10.0`r`n"
+          $iss += "ArchitecturesInstallIn64BitMode=x64`r`n"
+          $iss += "PrivilegesRequired=lowest`r`n"
+          $iss += "PrivilegesRequiredOverridesAllowed=dialog`r`n"
+          $iss += "`r`n"
+          $iss += "[Languages]`r`n"
+          $iss += "Name: " + [char]34 + "english" + [char]34 + "; MessagesFile: " + [char]34 + "compiler:Default.isl" + [char]34 + "`r`n"
+          $iss += "`r`n"
+          $iss += "[Tasks]`r`n"
+          $iss += "Name: " + [char]34 + "desktopicon" + [char]34 + "; Description: " + [char]34 + "Create a &desktop shortcut" + [char]34 + "; GroupDescription: " + [char]34 + "Additional icons:" + [char]34 + "; Flags: unchecked`r`n"
+          $iss += "`r`n"
+          $iss += "[Files]`r`n"
+          $iss += "Source: " + [char]34 + "$absDir\*" + [char]34 + "; DestDir: " + [char]34 + "{app}" + [char]34 + "; Flags: ignoreversion recursesubdirs createallsubdirs`r`n"
+          $iss += "`r`n"
+          $iss += "[Icons]`r`n"
+          $iss += "Name: " + [char]34 + "{group}\VSLA Desktop" + [char]34 + "; Filename: " + [char]34 + "{app}\$exeName" + [char]34 + "`r`n"
+          $iss += "Name: " + [char]34 + "{group}\Uninstall VSLA Desktop" + [char]34 + "; Filename: " + [char]34 + "{uninstallexe}" + [char]34 + "`r`n"
+          $iss += "Name: " + [char]34 + "{autodesktop}\VSLA Desktop" + [char]34 + "; Filename: " + [char]34 + "{app}\$exeName" + [char]34 + "; Tasks: desktopicon`r`n"
+          $iss += "`r`n"
+          $iss += "[Run]`r`n"
+          $iss += "Filename: " + [char]34 + "{app}\$exeName" + [char]34 + "; Description: " + [char]34 + "Launch VSLA Desktop" + [char]34 + "; Flags: nowait postinstall skipifsilent`r`n"
+          $iss += "`r`n"
+          $iss += "[UninstallRun]`r`n"
+          $iss += "Filename: " + [char]34 + "{cmd}" + [char]34 + "; Parameters: " + [char]34 + "/C taskkill /IM $exeName /F" + [char]34 + "; Flags: runhidden; RunOnceId: " + [char]34 + "KillApp" + [char]34 + "`r`n"
 
-          $lines = @(
-            '[Setup]',
-            "AppId=$appId",
-            'AppName=VSLA Desktop',
-            "AppVersion=$version",
-            'AppPublisher=VSLA',
-            'DefaultDirName={autopf}\VSLA Desktop',
-            'DefaultGroupName=VSLA Desktop',
-            'AllowNoIcons=yes',
-            'OutputDir=installer\output',
-            "OutputBaseFilename=VSLA-Desktop-Setup-v$version",
-            'Compression=lzma2/ultra64',
-            'SolidCompression=yes',
-            'WizardStyle=modern',
-            'DisableProgramGroupPage=yes',
-            "UninstallDisplayIcon={app}\$exeName",
-            'UninstallDisplayName=VSLA Desktop',
-            'MinVersion=10.0',
-            'ArchitecturesInstallIn64BitMode=x64',
-            'PrivilegesRequired=lowest',
-            'PrivilegesRequiredOverridesAllowed=dialog',
-            '',
-            '[Languages]',
-            'Name: "english"; MessagesFile: "compiler:Default.isl"',
-            '',
-            '[Tasks]',
-            'Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked',
-            '',
-            '[Files]',
-            "Source: `"$absDir\*`"; DestDir: `"{app}`"; Flags: ignoreversion recursesubdirs createallsubdirs",
-            '',
-            '[Icons]',
-            'Name: "{group}\VSLA Desktop"; Filename: "{app}\' + $exeName + '"',
-            'Name: "{group}\Uninstall VSLA Desktop"; Filename: "{uninstallexe}"',
-            'Name: "{autodesktop}\VSLA Desktop"; Filename: "{app}\' + $exeName + '"; Tasks: desktopicon',
-            '',
-            '[Run]',
-            'Filename: "{app}\' + $exeName + '"; Description: "Launch VSLA Desktop"; Flags: nowait postinstall skipifsilent',
-            '',
-            '[UninstallRun]',
-            'Filename: "{cmd}"; Parameters: "/C taskkill /IM ' + $exeName + ' /F"; Flags: runhidden; RunOnceId: "KillApp"'
+          # Write as ASCII — no BOM, no encoding issues with Inno Setup
+          [System.IO.File]::WriteAllText(
+            (Join-Path (Get-Location) "installer\setup.iss"),
+            $iss,
+            [System.Text.Encoding]::ASCII
           )
 
-          $lines | Out-File -FilePath "installer\setup.iss" -Encoding utf8
           Write-Host "=== Generated setup.iss ==="
           Get-Content "installer\setup.iss"
 
