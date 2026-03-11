@@ -22,11 +22,9 @@ jobs:
 
     steps:
 
-      # ── 1. Checkout source code ──────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Set version number ────────────────────────────────
       - name: Set version
         shell: bash
         run: |
@@ -36,7 +34,6 @@ jobs:
             echo "VERSION=1.0.${{ github.run_number }}" >> $GITHUB_ENV
           fi
 
-      # ── 3. Setup Flutter ─────────────────────────────────────
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -44,61 +41,61 @@ jobs:
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
-      # ── 4. Enable Windows desktop support ────────────────────
       - name: Enable Windows desktop
         run: flutter config --enable-windows-desktop
 
-      # ── 5. Install dependencies ───────────────────────────────
       - name: Install Flutter dependencies
         run: flutter pub get
 
-      # ── 6. Generate Windows platform files ───────────────────
-      # This creates the windows/ folder with all required build
-      # files if they are missing or empty in the repository
       - name: Generate Windows platform files
-        run: flutter create --platforms=windows .
+        run: flutter create --platforms=windows --org com.vsla .
 
-      # ── 7. Create assets directory if missing ─────────────────
-      # Prevents the pubspec asset warning from breaking the build
       - name: Create assets directory
         shell: bash
         run: mkdir -p assets/images
 
-      # ── 8. Build Windows release ──────────────────────────────
       - name: Build Windows release
-        run: |
-          flutter build windows --release --build-name=${{ env.VERSION }} --build-number=${{ github.run_number }}
+        run: flutter build windows --release --build-name=${{ env.VERSION }} --build-number=${{ github.run_number }}
 
-      # ── 9. Verify build output ────────────────────────────────
-      - name: Verify build output
-        shell: bash
+      - name: Find build output
+        shell: pwsh
         run: |
-          if [ ! -f "build/windows/x64/runner/Release/vsla_app.exe" ]; then
-            echo "ERROR: vsla_app.exe not found!"
+          Write-Host "=== Searching entire build folder for exe ==="
+          $exeFiles = Get-ChildItem -Path "build" -Filter "vsla_app.exe" -Recurse -ErrorAction SilentlyContinue
+          
+          if ($exeFiles.Count -eq 0) {
+            Write-Host "ERROR: vsla_app.exe not found. Listing entire build folder:"
+            Get-ChildItem -Path "build" -Recurse -ErrorAction SilentlyContinue | Select-Object FullName
             exit 1
-          fi
-          echo "Build successful:"
-          ls -la build/windows/x64/runner/Release/
+          }
+          
+          $exePath = $exeFiles[0].FullName
+          $exeDir  = $exeFiles[0].DirectoryName
+          
+          Write-Host "Found: $exePath"
+          Write-Host "Folder: $exeDir"
+          Write-Host "Contents:"
+          Get-ChildItem -Path $exeDir | Select-Object Name, Length
+          
+          # Save to env for next steps
+          "EXE_DIR=$exeDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      # ── 10. Install Inno Setup ────────────────────────────────
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
 
-      # ── 11. Create installer output directory ─────────────────
       - name: Create installer output directory
         shell: bash
         run: mkdir -p installer/output
 
-      # ── 12. Generate Inno Setup script ────────────────────────
       - name: Generate Inno Setup script
-        shell: bash
+        shell: pwsh
         run: |
-          BUILD_DIR="$(pwd)/build/windows/x64/runner/Release"
-          # Convert forward slashes to backslashes for Inno Setup
-          BUILD_DIR_WIN="${BUILD_DIR//\//\\}"
-          cat > installer/setup.iss << EOF
+          $exeDir = "${{ env.EXE_DIR }}"
+          $version = "${{ env.VERSION }}"
+
+          $issContent = @"
           #define MyAppName "VSLA Desktop"
-          #define MyAppVersion "${{ env.VERSION }}"
+          #define MyAppVersion "$version"
           #define MyAppPublisher "VSLA"
           #define MyAppExeName "vsla_app.exe"
 
@@ -130,7 +127,7 @@ jobs:
           Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
 
           [Files]
-          Source: "${BUILD_DIR_WIN}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+          Source: "$exeDir\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
           [Icons]
           Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -142,12 +139,12 @@ jobs:
 
           [UninstallRun]
           Filename: "{cmd}"; Parameters: "/C taskkill /IM {#MyAppExeName} /F"; Flags: runhidden; RunOnceId: "KillApp"
-          EOF
+          "@
 
-          echo "Generated setup.iss:"
-          cat installer/setup.iss
+          $issContent | Out-File -FilePath "installer\setup.iss" -Encoding utf8
+          Write-Host "Generated setup.iss:"
+          Get-Content "installer\setup.iss"
 
-      # ── 13. Compile installer ─────────────────────────────────
       - name: Compile Inno Setup installer
         shell: cmd
         run: |
@@ -157,22 +154,18 @@ jobs:
             exit /b 1
           )
 
-      # ── 14. Verify installer was created ──────────────────────
-      - name: Verify installer
-        shell: bash
+      - name: Verify and set installer path
+        shell: pwsh
         run: |
-          echo "Installer output:"
-          ls -la installer/output/
-          INSTALLER=$(ls installer/output/*.exe 2>/dev/null | head -1)
-          if [ -z "$INSTALLER" ]; then
-            echo "ERROR: No installer .exe found!"
+          $installers = Get-ChildItem -Path "installer\output" -Filter "*.exe" -ErrorAction SilentlyContinue
+          if ($installers.Count -eq 0) {
+            Write-Host "ERROR: No installer .exe found in installer\output\"
             exit 1
-          fi
-          echo "INSTALLER_PATH=$INSTALLER" >> $GITHUB_ENV
-          echo "INSTALLER_NAME=$(basename $INSTALLER)" >> $GITHUB_ENV
-          echo "Installer ready: $INSTALLER"
+          }
+          $installer = $installers[0]
+          Write-Host "Installer ready: $($installer.FullName)"
+          "INSTALLER_NAME=$($installer.Name)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      # ── 15. Upload installer as artifact ──────────────────────
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
@@ -180,7 +173,6 @@ jobs:
           path: installer/output/*.exe
           retention-days: 30
 
-      # ── 16. Create GitHub Release ─────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -192,17 +184,17 @@ jobs:
             ### How to install
             1. Download **${{ env.INSTALLER_NAME }}** below
             2. Double-click the installer
-            3. Follow the setup wizard — click Next, Next, Install
-            4. Launch **VSLA Desktop** from your Start Menu or Desktop shortcut
+            3. Follow the setup wizard
+            4. Launch **VSLA Desktop** from Start Menu or Desktop
 
             ### Requirements
             - Windows 10 or later (64-bit)
-            - Internet connection required for login and registration
+            - Internet connection required for login
 
             ### Build info
             - Branch: `${{ github.ref_name }}`
             - Commit: `${{ github.sha }}`
-            - Build number: `${{ github.run_number }}`
+            - Build: `${{ github.run_number }}`
           files: installer/output/*.exe
           draft: false
           prerelease: false
