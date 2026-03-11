@@ -73,6 +73,31 @@ jobs:
           "EXE_NAME=$($exeFile.Name)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "RELEASE_DIR=$releaseDir"   | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Download and bundle sqlite3.dll
+        shell: pwsh
+        run: |
+          $url      = "https://www.sqlite.org/2024/sqlite-dll-win-x64-3450200.zip"
+          $zip      = "sqlite3.zip"
+          $release  = "${{ env.RELEASE_DIR }}"
+
+          Write-Host "Downloading sqlite3.dll..."
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+
+          Write-Host "Extracting..."
+          Expand-Archive -Path $zip -DestinationPath "sqlite3_extracted" -Force
+
+          $dll = Get-ChildItem -Path "sqlite3_extracted" -Filter "sqlite3.dll" -Recurse | Select-Object -First 1
+          if ($null -eq $dll) {
+            Write-Host "ERROR: sqlite3.dll not found in downloaded zip"
+            exit 1
+          }
+
+          Copy-Item $dll.FullName -Destination $release -Force
+          Write-Host "sqlite3.dll successfully copied to $release"
+
+          Write-Host "=== Updated Release folder contents ==="
+          Get-ChildItem -Path $release | Select-Object Name, Length
+
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
 
