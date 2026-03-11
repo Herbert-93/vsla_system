@@ -41,7 +41,9 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
 
   Future<void> _loadSettings() async {
     setState(() => _isLoading = true);
-    _groupId = await _authService.getGroupId();
+
+    // ← FIXED: was getGroupId(), now getCurrentGroupId()
+    _groupId = await _authService.getCurrentGroupId();
 
     if (_groupId != null) {
       final settings = await _dbService.getGroupSettings(_groupId!);
@@ -65,15 +67,26 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
 
   Future<void> _saveSettings() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (_groupId == null || _groupId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Could not find your group. Please log out and log in again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      final gId = _groupId ?? 'default-group';
-      final existing = await _dbService.getGroupSettings(gId);
+      final existing = await _dbService.getGroupSettings(_groupId!);
 
       final settings = GroupSettings(
         id: existing?.id ?? _uuid.v4(),
-        groupId: gId,
+        groupId: _groupId!,
         shareValue: double.parse(_shareValueController.text),
         minShareUnits: int.parse(_minShareUnitsController.text),
         maxShareUnits: int.parse(_maxShareUnitsController.text),
@@ -104,7 +117,7 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => SignatorySettingsScreen(groupId: gId),
+          builder: (_) => SignatorySettingsScreen(groupId: _groupId!),
         ),
       );
     } catch (e) {
@@ -152,7 +165,6 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                 key: _formKey,
                 child: Column(
                   children: [
-                    // Info banner
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -175,8 +187,6 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-
-                    // Shares
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
@@ -209,8 +219,6 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-
-                    // Social Fund
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
@@ -238,8 +246,6 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-
-                    // Loans
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
@@ -275,8 +281,6 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-
-                    // Penalties
                     Card(
                       child: SwitchListTile(
                         title: const Text('Enable Penalties/Fines'),
@@ -285,7 +289,6 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
-
                     SizedBox(
                       width: double.infinity,
                       height: 50,
@@ -316,13 +319,5 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
     _minLoanPeriodController.dispose();
     _maxLoanPeriodController.dispose();
     super.dispose();
-  }
-}
-
-extension AuthServiceGetGroupId on AuthService {
-  /// Fallback implementation for getGroupId used by GroupSettingsScreen.
-  /// Replace this with the real AuthService API integration if available.
-  Future<String?> getGroupId() async {
-    return null;
   }
 }

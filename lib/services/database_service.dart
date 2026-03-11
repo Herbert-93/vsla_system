@@ -20,12 +20,30 @@ class DatabaseService {
   }
 
   Future<Database> _initDB(String filePath) async {
-    final documentsDirectory = await getApplicationSupportDirectory();
-    final path = join(documentsDirectory.path, filePath);
+    final String dbPath;
+
+    if (Platform.isWindows) {
+      // Windows: save to current user's Desktop
+      final String userProfile =
+          Platform.environment['USERPROFILE'] ?? 'C:\\Users\\Public';
+      dbPath = join(userProfile, 'Desktop', filePath);
+    } else if (Platform.isLinux) {
+      // Linux: save to Desktop
+      final String home = Platform.environment['HOME'] ?? '/home';
+      dbPath = join(home, 'Desktop', filePath);
+    } else {
+      // Fallback for any other platform
+      final documentsDirectory = await getApplicationSupportDirectory();
+      dbPath = join(documentsDirectory.path, filePath);
+    }
+
+    // Make sure the folder exists
+    await Directory(dirname(dbPath)).create(recursive: true);
+
     return await databaseFactoryFfi.openDatabase(
-      path,
+      dbPath,
       options: OpenDatabaseOptions(
-        version: 2,
+        version: 3,
         onCreate: _createDB,
         onUpgrade: _onUpgrade,
       ),
@@ -242,8 +260,7 @@ class DatabaseService {
 
   Future<Member?> getMember(String id) async {
     final db = await database;
-    final maps =
-        await db.query('members', where: 'id = ?', whereArgs: [id]);
+    final maps = await db.query('members', where: 'id = ?', whereArgs: [id]);
     if (maps.isNotEmpty) return Member.fromMap(maps.first);
     return null;
   }
@@ -286,8 +303,7 @@ class DatabaseService {
 
   Future<Group?> getGroup(String id) async {
     final db = await database;
-    final maps =
-        await db.query('groups', where: 'id = ?', whereArgs: [id]);
+    final maps = await db.query('groups', where: 'id = ?', whereArgs: [id]);
     if (maps.isNotEmpty) return Group.fromMap(maps.first);
     return null;
   }
@@ -315,8 +331,8 @@ class DatabaseService {
 
   Future<GroupSettings?> getGroupSettings(String groupId) async {
     final db = await database;
-    final maps = await db
-        .query('settings', where: 'groupId = ?', whereArgs: [groupId]);
+    final maps =
+        await db.query('settings', where: 'groupId = ?', whereArgs: [groupId]);
     if (maps.isNotEmpty) return GroupSettings.fromMap(maps.first);
     return null;
   }
@@ -343,8 +359,7 @@ class DatabaseService {
       'meetingNumber': meeting['meetingNumber'],
       'date': meeting['date'],
       'attendance': encode(meeting['attendance']) ?? '{}',
-      'socialFundCollections':
-          encode(meeting['socialFundCollections']) ?? '{}',
+      'socialFundCollections': encode(meeting['socialFundCollections']) ?? '{}',
       'socialFundDistributions':
           encode(meeting['socialFundDistributions']) ?? '{}',
       'savings': encode(meeting['savings']) ?? '{}',
@@ -355,8 +370,7 @@ class DatabaseService {
       'totalSocialFund':
           (meeting['totalSocialFund'] as num?)?.toDouble() ?? 0.0,
       'totalLoans': (meeting['totalLoans'] as num?)?.toDouble() ?? 0.0,
-      'totalPenalties':
-          (meeting['totalPenalties'] as num?)?.toDouble() ?? 0.0,
+      'totalPenalties': (meeting['totalPenalties'] as num?)?.toDouble() ?? 0.0,
       'status': meeting['status'] ?? 'in_progress',
       'notes': meeting['notes'] ?? '',
       'verifiedByPresident': meeting['verifiedByPresident'] ?? 0,
@@ -380,8 +394,7 @@ class DatabaseService {
         where: 'id = ?', whereArgs: [meeting['id']]);
   }
 
-  Future<List<Map<String, dynamic>>> getGroupMeetings(
-      String groupId) async {
+  Future<List<Map<String, dynamic>>> getGroupMeetings(String groupId) async {
     final db = await database;
     return await db.query(
       'meetings',
@@ -432,8 +445,7 @@ class DatabaseService {
     return loan['id'];
   }
 
-  Future<List<Map<String, dynamic>>> getMemberLoans(
-      String memberId) async {
+  Future<List<Map<String, dynamic>>> getMemberLoans(String memberId) async {
     final db = await database;
     return await db.query('loans',
         where: 'memberId = ?',
@@ -441,18 +453,16 @@ class DatabaseService {
         orderBy: 'startDate DESC');
   }
 
-  Future<List<Map<String, dynamic>>> getGroupActiveLoans(
-      String groupId) async {
+  Future<List<Map<String, dynamic>>> getGroupActiveLoans(String groupId) async {
     final db = await database;
     return await db.query('loans',
-        where: 'groupId = ? AND status = ?',
-        whereArgs: [groupId, 'active']);
+        where: 'groupId = ? AND status = ?', whereArgs: [groupId, 'active']);
   }
 
   Future<int> updateLoan(Map<String, dynamic> loan) async {
     final db = await database;
-    return await db.update('loans', loan,
-        where: 'id = ?', whereArgs: [loan['id']]);
+    return await db
+        .update('loans', loan, where: 'id = ?', whereArgs: [loan['id']]);
   }
 
   // ─── Backup / Restore ───────────────────────────────────────────────────────

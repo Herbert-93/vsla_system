@@ -72,7 +72,7 @@ class _MemberRegistrationScreenState extends State<MemberRegistrationScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() {
       _isLoading = true;
-      _statusMessage = 'Creating member account online...';
+      _statusMessage = 'Saving member...';
       _statusIsError = false;
     });
 
@@ -81,31 +81,12 @@ class _MemberRegistrationScreenState extends State<MemberRegistrationScreen> {
         _firstNameController.text,
         _lastNameController.text,
       );
+
+      // Save member locally with a UUID placeholder ID.
+      // The member will create their own Firebase account when they
+      // register via the login screen — it auto-links by umvaId.
       final memberId = _uuid.v4();
-      // Auto-generate a temporary password for the member
-      final generatedPassword = Helpers.generateRandomPassword();
 
-      // Step 1: Create Firebase account for the member (requires internet)
-      final authResult = await (_authService as dynamic).registerUser(
-        umvaId: umvaId,
-        password: generatedPassword,
-        groupId: widget.groupId,
-        role: _selectedRole ?? 'member',
-        memberId: memberId,
-      );
-
-      if (!authResult.success) {
-        setState(() {
-          _isLoading = false;
-          _statusMessage = authResult.errorMessage;
-          _statusIsError = true;
-        });
-        return;
-      }
-
-      setState(() => _statusMessage = 'Saving member locally...');
-
-      // Step 2: Save member in local SQLite
       final member = Member(
         id: memberId,
         umvaId: umvaId,
@@ -129,7 +110,7 @@ class _MemberRegistrationScreenState extends State<MemberRegistrationScreen> {
 
       if (!mounted) return;
 
-      // Show credentials dialog
+      // Show the UMVA ID to the leader to share with the member
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -145,9 +126,11 @@ class _MemberRegistrationScreenState extends State<MemberRegistrationScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Share these credentials with the member:'),
+              const Text(
+                  'Share this UMVA ID with the member so they can register and login:'),
               const SizedBox(height: 12),
               Container(
+                width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: Colors.blue.shade50,
@@ -162,29 +145,18 @@ class _MemberRegistrationScreenState extends State<MemberRegistrationScreen> {
                             color: Colors.blue.shade700,
                             fontSize: 12,
                             fontWeight: FontWeight.w500)),
-                    Text(
+                    SelectableText(
                       umvaId,
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 17),
-                    ),
-                    const SizedBox(height: 10),
-                    Text('Temporary Password',
-                        style: TextStyle(
-                            color: Colors.blue.shade700,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500)),
-                    Text(
-                      generatedPassword,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 17),
+                          fontWeight: FontWeight.bold, fontSize: 20),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
               const Text(
-                '⚠️ The member should change their password after first login.',
-                style: TextStyle(color: Colors.orange, fontSize: 12),
+                'The member uses this UMVA ID to create their own account and set their own password.',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
               ),
             ],
           ),
@@ -226,7 +198,6 @@ class _MemberRegistrationScreenState extends State<MemberRegistrationScreen> {
           key: _formKey,
           child: Column(
             children: [
-              // Status banner
               if (_statusMessage != null)
                 Container(
                   width: double.infinity,
@@ -276,7 +247,6 @@ class _MemberRegistrationScreenState extends State<MemberRegistrationScreen> {
                     ],
                   ),
                 ),
-
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),

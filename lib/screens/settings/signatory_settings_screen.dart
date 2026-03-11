@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/database_service.dart';
 import '../../utils/helpers.dart';
+import '../../models/member.dart';
 
 class SignatorySettingsScreen extends StatefulWidget {
   final String groupId;
@@ -11,8 +12,7 @@ class SignatorySettingsScreen extends StatefulWidget {
       _SignatorySettingsScreenState();
 }
 
-class _SignatorySettingsScreenState
-    extends State<SignatorySettingsScreen> {
+class _SignatorySettingsScreenState extends State<SignatorySettingsScreen> {
   final _presidentController = TextEditingController();
   final _treasurerController = TextEditingController();
   final _secretaryController = TextEditingController();
@@ -33,19 +33,36 @@ class _SignatorySettingsScreenState
     }
 
     try {
-      // Fetch group members and update their password hashes
-      final members =
-          await _dbService.getGroupMembers(widget.groupId);
+      final members = await _dbService.getGroupMembers(widget.groupId);
+
+      if (members.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'No members found in this group. Please add members first.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Find members by role safely — returns null if not found
+      Member? _findByRole(String role) {
+        try {
+          return members.firstWhere((m) => m.role == role);
+        } catch (_) {
+          return null;
+        }
+      }
 
       final president =
-          members.firstWhere((m) => m.role == 'president',
-              orElse: () => members.first);
-      final treasurer =
-          members.firstWhere((m) => m.role == 'treasurer',
-              orElse: () => members.first);
-      final secretary =
-          members.firstWhere((m) => m.role == 'secretary',
-              orElse: () => members.first);
+          _findByRole('president') ?? _findByRole('leader') ?? members.first;
+      final treasurer = _findByRole('treasurer') ??
+          (members.length > 1 ? members[1] : members.first);
+      final secretary = _findByRole('secretary') ??
+          (members.length > 2 ? members[2] : members.first);
 
       await _dbService.setMemberPassword(
           president.id!, Helpers.hashPassword(_presidentController.text));
@@ -61,12 +78,12 @@ class _SignatorySettingsScreenState
           backgroundColor: Colors.green,
         ),
       );
-      Navigator.popUntil(context, (route) => route.isFirst);
+      Navigator.pop(context);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: $e'),
+            content: Text('Error saving signatories: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -109,8 +126,7 @@ class _SignatorySettingsScreenState
                 suffixIcon: IconButton(
                   icon: Icon(
                       _obscureAll ? Icons.visibility : Icons.visibility_off),
-                  onPressed: () =>
-                      setState(() => _obscureAll = !_obscureAll),
+                  onPressed: () => setState(() => _obscureAll = !_obscureAll),
                 ),
               ),
             ),
@@ -151,14 +167,14 @@ class _SignatorySettingsScreenState
               ),
             ),
             const SizedBox(height: 16),
-            _signatoryCard('President / Chairperson',
-                _presidentController, Icons.person, Colors.purple),
+            _signatoryCard('President / Chairperson', _presidentController,
+                Icons.person, Colors.purple),
             const SizedBox(height: 8),
             _signatoryCard('Treasurer', _treasurerController,
                 Icons.account_balance, Colors.green),
             const SizedBox(height: 8),
-            _signatoryCard('Secretary', _secretaryController,
-                Icons.description, Colors.orange),
+            _signatoryCard('Secretary', _secretaryController, Icons.description,
+                Colors.orange),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:vsla_app/screens/auth/bank_selection_screen.dart';
 import '../../services/auth_service.dart';
 import '../../providers/app_state_provider.dart';
 import 'register_screen.dart';
@@ -210,7 +211,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                     ),
                     TextButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () => Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const BankSelectionScreen()),
+                      ),
                       child: const Text('← Change Bank'),
                     ),
                   ],

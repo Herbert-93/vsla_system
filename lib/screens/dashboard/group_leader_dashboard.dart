@@ -65,6 +65,7 @@ class _GroupLeaderDashboardState extends State<GroupLeaderDashboard> {
         title: Text(_group?.name ?? 'VSLA Group Dashboard'),
         backgroundColor: Colors.blue.shade800,
         foregroundColor: Colors.white,
+        centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -126,7 +127,6 @@ class _GroupLeaderDashboardState extends State<GroupLeaderDashboard> {
         Card(
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [Colors.blue.shade600, Colors.blue.shade900],
@@ -136,27 +136,91 @@ class _GroupLeaderDashboardState extends State<GroupLeaderDashboard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  _group!.name,
-                  style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white),
+                // Group info section
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _group!.name,
+                        style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                          'Code: ${_group!.groupCode}  •  Bank: ${_group!.bankName}',
+                          style: const TextStyle(color: Colors.white70)),
+                      const SizedBox(height: 4),
+                      Text(
+                          'Meeting #${_group!.currentMeeting}  •  ${_members.length} Members',
+                          style: const TextStyle(color: Colors.white70)),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 6),
-                Text('Code: ${_group!.groupCode}  •  Bank: ${_group!.bankName}',
-                    style: const TextStyle(color: Colors.white70)),
-                const SizedBox(height: 4),
-                Text(
-                    'Meeting #${_group!.currentMeeting}  •  ${_members.length} Members',
-                    style: const TextStyle(color: Colors.white70)),
+
+                // Configure Settings banner (only when settings are missing)
+                if (!_hasSettings)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade700.withOpacity(0.85),
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(8),
+                        bottomRight: Radius.circular(8),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded,
+                            color: Colors.white, size: 18),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'Group settings not configured yet.',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.orange.shade800,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 6),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            textStyle: const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.bold),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const GroupSettingsScreen()),
+                          ).then((_) => _loadDashboardData()),
+                          child: const Text('Configure'),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),
         ),
         const SizedBox(height: 16),
 
-        // ── Start Meeting / Settings Warning ───────────────
+        // ── Start Meeting Button (only when settings are configured) ──
         if (_hasSettings)
           CustomButton(
             text: 'START MEETING',
@@ -171,32 +235,6 @@ class _GroupLeaderDashboardState extends State<GroupLeaderDashboard> {
                 ),
               ).then((_) => _loadDashboardData());
             },
-          )
-        else
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.orange.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange),
-            ),
-            child: Column(
-              children: [
-                const Text(
-                  '⚠️ Please configure group settings before starting a meeting.',
-                  style: TextStyle(color: Colors.orange),
-                ),
-                const SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const GroupSettingsScreen()),
-                  ).then((_) => _loadDashboardData()),
-                  child: const Text('Configure Settings'),
-                ),
-              ],
-            ),
           ),
         const SizedBox(height: 20),
 
@@ -215,7 +253,7 @@ class _GroupLeaderDashboardState extends State<GroupLeaderDashboard> {
               children: [
                 Text('Quick Actions',
                     style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 16,
                         fontWeight: FontWeight.w600,
                         color: Colors.grey.shade700,
                         letterSpacing: 0.4)),
@@ -284,7 +322,7 @@ class _GroupLeaderDashboardState extends State<GroupLeaderDashboard> {
               children: [
                 Text('Members by Gender',
                     style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 16,
                         fontWeight: FontWeight.w600,
                         color: Colors.grey.shade700,
                         letterSpacing: 0.4)),
@@ -312,7 +350,7 @@ class _GroupLeaderDashboardState extends State<GroupLeaderDashboard> {
         // ── Stats Row ──────────────────────────────────────
         Text('Group Finances',
             style: TextStyle(
-                fontSize: 13,
+                fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: Colors.grey.shade600,
                 letterSpacing: 0.4)),
@@ -323,7 +361,7 @@ class _GroupLeaderDashboardState extends State<GroupLeaderDashboard> {
           crossAxisCount: 4,
           crossAxisSpacing: 8,
           mainAxisSpacing: 8,
-          childAspectRatio: 0.95,
+          childAspectRatio: 1.8,
           children: [
             _statCard('Savings', Helpers.formatCurrency(_group!.totalSavings),
                 Icons.savings, Colors.blue),
@@ -352,15 +390,15 @@ class _GroupLeaderDashboardState extends State<GroupLeaderDashboard> {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: color.withOpacity(0.15)),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(icon, color: color, size: 20),
-          const SizedBox(height: 5),
+          const SizedBox(height: 4),
           Text(value,
               style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: Colors.grey.shade800),
               maxLines: 2,
@@ -368,7 +406,7 @@ class _GroupLeaderDashboardState extends State<GroupLeaderDashboard> {
               overflow: TextOverflow.ellipsis),
           const SizedBox(height: 2),
           Text(title,
-              style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
               textAlign: TextAlign.center),
         ],
       ),
@@ -398,7 +436,7 @@ class _GroupLeaderDashboardState extends State<GroupLeaderDashboard> {
                         color: color)),
                 Text(label,
                     style:
-                        TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                        TextStyle(fontSize: 13, color: Colors.grey.shade600)),
               ],
             ),
           ],
@@ -426,7 +464,7 @@ class _GroupLeaderDashboardState extends State<GroupLeaderDashboard> {
             ),
             const SizedBox(height: 4),
             Text(label,
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
           ],
         ),
       ),
@@ -435,8 +473,6 @@ class _GroupLeaderDashboardState extends State<GroupLeaderDashboard> {
 }
 
 /// Minimal inline EndCycleScreen to replace the missing external file.
-/// This provides a simple placeholder UI and prevents the "Target of URI doesn't exist" error.
-/// You can expand this later with the actual end-cycle functionality.
 class EndCycleScreen extends StatelessWidget {
   final Group group;
   final List<Member> members;
