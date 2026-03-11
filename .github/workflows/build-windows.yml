@@ -1,0 +1,201 @@
+name: Build & Release VSLA Windows Installer
+
+on:
+  push:
+    branches:
+      - '**'        # Triggers on push to ANY branch immediately
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g. 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+env:
+  FLUTTER_VERSION: '3.22.0'
+  FLUTTER_CHANNEL: stable
+
+jobs:
+  build-and-release:
+    name: Build Windows Installer
+    runs-on: windows-latest
+
+    steps:
+
+      # ── 1. Checkout source code ──────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set version number ────────────────────────────────
+      - name: Set version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            echo "VERSION=1.0.${{ github.run_number }}" >> $GITHUB_ENV
+          fi
+
+      # ── 3. Setup Flutter ─────────────────────────────────────
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      # ── 4. Enable Windows desktop support ────────────────────
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      # ── 5. Install dependencies ───────────────────────────────
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      # ── 6. Analyse project ────────────────────────────────────
+      - name: Analyse project
+        run: flutter analyze --no-fatal-infos
+        continue-on-error: true
+
+      # ── 7. Build Windows release ──────────────────────────────
+      - name: Build Windows release
+        run: |
+          flutter build windows --release --build-name=${{ env.VERSION }} --build-number=${{ github.run_number }}
+
+      # ── 8. Verify build output ────────────────────────────────
+      - name: Verify build output
+        shell: bash
+        run: |
+          if [ ! -f "build/windows/x64/runner/Release/vsla_app.exe" ]; then
+            echo "ERROR: vsla_app.exe not found!"
+            exit 1
+          fi
+          echo "Build successful:"
+          ls -la build/windows/x64/runner/Release/
+
+      # ── 9. Install Inno Setup ─────────────────────────────────
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      # ── 10. Create installer output directory ─────────────────
+      - name: Create installer output directory
+        run: mkdir -p installer/output
+
+      # ── 11. Generate Inno Setup script ────────────────────────
+      - name: Generate Inno Setup script
+        shell: bash
+        run: |
+          BUILD_DIR="$(pwd)/build/windows/x64/runner/Release"
+          cat > installer/setup.iss << EOF
+          #define MyAppName "VSLA Desktop"
+          #define MyAppVersion "${{ env.VERSION }}"
+          #define MyAppPublisher "VSLA"
+          #define MyAppExeName "vsla_app.exe"
+
+          [Setup]
+          AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
+          AppName={#MyAppName}
+          AppVersion={#MyAppVersion}
+          AppPublisher={#MyAppPublisher}
+          DefaultDirName={autopf}\{#MyAppName}
+          DefaultGroupName={#MyAppName}
+          AllowNoIcons=yes
+          OutputDir=installer\output
+          OutputBaseFilename=VSLA-Desktop-Setup-v{#MyAppVersion}
+          Compression=lzma2/ultra64
+          SolidCompression=yes
+          WizardStyle=modern
+          DisableProgramGroupPage=yes
+          UninstallDisplayIcon={app}\{#MyAppExeName}
+          UninstallDisplayName={#MyAppName}
+          MinVersion=10.0
+          ArchitecturesInstallIn64BitMode=x64
+          PrivilegesRequired=lowest
+          PrivilegesRequiredOverridesAllowed=dialog
+
+          [Languages]
+          Name: "english"; MessagesFile: "compiler:Default.isl"
+
+          [Tasks]
+          Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
+
+          [Files]
+          Source: "${BUILD_DIR}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+          Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
+          Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
+          [Run]
+          Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+          [UninstallRun]
+          Filename: "{cmd}"; Parameters: "/C taskkill /IM {#MyAppExeName} /F"; Flags: runhidden; RunOnceId: "KillApp"
+          EOF
+
+          echo "Generated setup.iss:"
+          cat installer/setup.iss
+
+      # ── 12. Compile installer ─────────────────────────────────
+      - name: Compile Inno Setup installer
+        shell: cmd
+        run: |
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\setup.iss
+          if %errorlevel% neq 0 (
+            echo ERROR: Inno Setup compilation failed!
+            exit /b 1
+          )
+
+      # ── 13. Verify installer was created ──────────────────────
+      - name: Verify installer
+        shell: bash
+        run: |
+          echo "Installer output:"
+          ls -la installer/output/
+          INSTALLER=$(ls installer/output/*.exe 2>/dev/null | head -1)
+          if [ -z "$INSTALLER" ]; then
+            echo "ERROR: No installer .exe found!"
+            exit 1
+          fi
+          echo "INSTALLER_PATH=$INSTALLER" >> $GITHUB_ENV
+          echo "INSTALLER_NAME=$(basename $INSTALLER)" >> $GITHUB_ENV
+          echo "Installer ready: $INSTALLER"
+
+      # ── 14. Upload installer as artifact ──────────────────────
+      # Available in Actions → your run → Artifacts section
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VSLA-Desktop-Installer-v${{ env.VERSION }}-build${{ github.run_number }}
+          path: installer/output/*.exe
+          retention-days: 30
+
+      # ── 15. Create GitHub Release ─────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: VSLA Desktop v${{ env.VERSION }} (build ${{ github.run_number }})
+          tag_name: build-${{ github.run_number }}
+          body: |
+            ## VSLA Desktop v${{ env.VERSION }}
+
+            ### How to install
+            1. Download **${{ env.INSTALLER_NAME }}** below
+            2. Double-click the installer
+            3. Follow the setup wizard — click Next, Next, Install
+            4. Launch **VSLA Desktop** from your Start Menu or Desktop shortcut
+
+            ### Requirements
+            - Windows 10 or later (64-bit)
+            - Internet connection required for login and registration
+
+            ### Build info
+            - Branch: `${{ github.ref_name }}`
+            - Commit: `${{ github.sha }}`
+            - Build number: `${{ github.run_number }}`
+          files: installer/output/*.exe
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GH_TOKEN }}
