@@ -91,7 +91,7 @@ jobs:
           $absDir     = (Resolve-Path $releaseDir).Path
 
           # AppId written separately to avoid YAML parsing the braces
-          $appId = '{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}'
+          $appId = '{{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}'
 
           $lines = @(
             '[Setup]',
