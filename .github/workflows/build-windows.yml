@@ -57,21 +57,18 @@ jobs:
       - name: Build Windows release
         run: flutter build windows --release --build-name=${{ env.VERSION }} --build-number=${{ github.run_number }}
 
-      - name: Find build output and set paths
+      - name: Find build output
         shell: pwsh
         run: |
           $releaseDir = "build\windows\x64\runner\Release"
-
           Write-Host "=== Contents of Release folder ==="
           Get-ChildItem -Path $releaseDir | Select-Object Name, Length
 
           $exeFile = Get-ChildItem -Path $releaseDir -Filter "*.exe" -File | Select-Object -First 1
-
           if ($null -eq $exeFile) {
             Write-Host "ERROR: No .exe found in $releaseDir"
             exit 1
           }
-
           Write-Host "Found exe: $($exeFile.Name)"
           "EXE_NAME=$($exeFile.Name)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "RELEASE_DIR=$releaseDir"   | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -79,10 +76,7 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
 
-      - name: Create installer output directory
-        run: New-Item -ItemType Directory -Force -Path "installer\output"
-
-      - name: Generate Inno Setup script
+      - name: Generate and compile installer
         shell: pwsh
         run: |
           $exeName    = "${{ env.EXE_NAME }}"
@@ -91,7 +85,14 @@ jobs:
           $absDir     = (Resolve-Path $releaseDir).Path
           $appId      = '{{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}'
 
-          $iss = "[Setup]`r`n"
+          # Use absolute path so Inno Setup always outputs here
+          $outputDir  = (Join-Path (Get-Location).Path "output")
+          New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+          Write-Host "Output dir: $outputDir"
+
+          $q = [char]34
+
+          $iss  = "[Setup]`r`n"
           $iss += "AppId=$appId`r`n"
           $iss += "AppName=VSLA Desktop`r`n"
           $iss += "AppVersion=$version`r`n"
@@ -99,7 +100,7 @@ jobs:
           $iss += "DefaultDirName={autopf}\VSLA Desktop`r`n"
           $iss += "DefaultGroupName=VSLA Desktop`r`n"
           $iss += "AllowNoIcons=yes`r`n"
-          $iss += "OutputDir=installer\output`r`n"
+          $iss += "OutputDir=$outputDir`r`n"
           $iss += "OutputBaseFilename=VSLA-Desktop-Setup-v$version`r`n"
           $iss += "Compression=lzma2/ultra64`r`n"
           $iss += "SolidCompression=yes`r`n"
@@ -113,61 +114,59 @@ jobs:
           $iss += "PrivilegesRequiredOverridesAllowed=dialog`r`n"
           $iss += "`r`n"
           $iss += "[Languages]`r`n"
-          $iss += "Name: " + [char]34 + "english" + [char]34 + "; MessagesFile: " + [char]34 + "compiler:Default.isl" + [char]34 + "`r`n"
+          $iss += "Name: ${q}english${q}; MessagesFile: ${q}compiler:Default.isl${q}`r`n"
           $iss += "`r`n"
           $iss += "[Tasks]`r`n"
-          $iss += "Name: " + [char]34 + "desktopicon" + [char]34 + "; Description: " + [char]34 + "Create a &desktop shortcut" + [char]34 + "; GroupDescription: " + [char]34 + "Additional icons:" + [char]34 + "; Flags: unchecked`r`n"
+          $iss += "Name: ${q}desktopicon${q}; Description: ${q}Create a &desktop shortcut${q}; GroupDescription: ${q}Additional icons:${q}; Flags: unchecked`r`n"
           $iss += "`r`n"
           $iss += "[Files]`r`n"
-          $iss += "Source: " + [char]34 + "$absDir\*" + [char]34 + "; DestDir: " + [char]34 + "{app}" + [char]34 + "; Flags: ignoreversion recursesubdirs createallsubdirs`r`n"
+          $iss += "Source: ${q}${absDir}\*${q}; DestDir: ${q}{app}${q}; Flags: ignoreversion recursesubdirs createallsubdirs`r`n"
           $iss += "`r`n"
           $iss += "[Icons]`r`n"
-          $iss += "Name: " + [char]34 + "{group}\VSLA Desktop" + [char]34 + "; Filename: " + [char]34 + "{app}\$exeName" + [char]34 + "`r`n"
-          $iss += "Name: " + [char]34 + "{group}\Uninstall VSLA Desktop" + [char]34 + "; Filename: " + [char]34 + "{uninstallexe}" + [char]34 + "`r`n"
-          $iss += "Name: " + [char]34 + "{autodesktop}\VSLA Desktop" + [char]34 + "; Filename: " + [char]34 + "{app}\$exeName" + [char]34 + "; Tasks: desktopicon`r`n"
+          $iss += "Name: ${q}{group}\VSLA Desktop${q}; Filename: ${q}{app}\$exeName${q}`r`n"
+          $iss += "Name: ${q}{group}\Uninstall VSLA Desktop${q}; Filename: ${q}{uninstallexe}${q}`r`n"
+          $iss += "Name: ${q}{autodesktop}\VSLA Desktop${q}; Filename: ${q}{app}\$exeName${q}; Tasks: desktopicon`r`n"
           $iss += "`r`n"
           $iss += "[Run]`r`n"
-          $iss += "Filename: " + [char]34 + "{app}\$exeName" + [char]34 + "; Description: " + [char]34 + "Launch VSLA Desktop" + [char]34 + "; Flags: nowait postinstall skipifsilent`r`n"
+          $iss += "Filename: ${q}{app}\$exeName${q}; Description: ${q}Launch VSLA Desktop${q}; Flags: nowait postinstall skipifsilent`r`n"
           $iss += "`r`n"
           $iss += "[UninstallRun]`r`n"
-          $iss += "Filename: " + [char]34 + "{cmd}" + [char]34 + "; Parameters: " + [char]34 + "/C taskkill /IM $exeName /F" + [char]34 + "; Flags: runhidden; RunOnceId: " + [char]34 + "KillApp" + [char]34 + "`r`n"
+          $iss += "Filename: ${q}{cmd}${q}; Parameters: ${q}/C taskkill /IM $exeName /F${q}; Flags: runhidden; RunOnceId: ${q}KillApp${q}`r`n"
 
-          # Write as ASCII — no BOM, no encoding issues with Inno Setup
-          [System.IO.File]::WriteAllText(
-            (Join-Path (Get-Location) "installer\setup.iss"),
-            $iss,
-            [System.Text.Encoding]::ASCII
-          )
+          # Write as ASCII - no BOM, fully compatible with Inno Setup
+          $issPath = Join-Path (Get-Location).Path "setup.iss"
+          [System.IO.File]::WriteAllText($issPath, $iss, [System.Text.Encoding]::ASCII)
 
           Write-Host "=== Generated setup.iss ==="
-          Get-Content "installer\setup.iss"
+          Get-Content $issPath
 
-      - name: Compile Inno Setup installer
-        shell: cmd
-        run: |
-          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\setup.iss
-          if %errorlevel% neq 0 (
-            echo ERROR: Inno Setup compilation failed!
-            exit /b 1
-          )
-
-      - name: Verify installer
-        shell: pwsh
-        run: |
-          $installers = Get-ChildItem -Path "installer\output" -Filter "*.exe" -ErrorAction SilentlyContinue
-          if ($installers.Count -eq 0) {
-            Write-Host "ERROR: No installer found in installer\output\"
+          Write-Host "`n=== Compiling installer ==="
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc $issPath
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERROR: Inno Setup compilation failed!"
             exit 1
           }
-          $installer = $installers[0]
-          Write-Host "Installer ready: $($installer.FullName)"
-          "INSTALLER_NAME=$($installer.Name)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          Write-Host "`n=== Output directory contents ==="
+          Get-ChildItem -Path $outputDir
+
+          $installer = Get-ChildItem -Path $outputDir -Filter "*.exe" | Select-Object -First 1
+          if ($null -eq $installer) {
+            Write-Host "ERROR: No installer .exe found in $outputDir"
+            exit 1
+          }
+
+          Write-Host "SUCCESS: Installer created at $($installer.FullName)"
+          Write-Host "Size: $([math]::Round($installer.Length / 1MB, 2)) MB"
+          "INSTALLER_NAME=$($installer.Name)"     | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "INSTALLER_PATH=$($installer.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: VSLA-Desktop-Installer-v${{ env.VERSION }}-build${{ github.run_number }}
-          path: installer/output/*.exe
+          path: ${{ env.INSTALLER_PATH }}
           retention-days: 30
 
       - name: Create GitHub Release
@@ -192,7 +191,7 @@ jobs:
             - Branch: `${{ github.ref_name }}`
             - Commit: `${{ github.sha }}`
             - Build: `${{ github.run_number }}`
-          files: installer/output/*.exe
+          files: ${{ env.INSTALLER_PATH }}
           draft: false
           prerelease: false
           token: ${{ secrets.GH_TOKEN }}
