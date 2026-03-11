@@ -3,7 +3,7 @@ name: Build & Release VSLA Windows Installer
 on:
   push:
     branches:
-      - '**'        # Triggers on push to ANY branch immediately
+      - '**'
   workflow_dispatch:
     inputs:
       version:
@@ -28,7 +28,6 @@ jobs:
 
       # ── 2. Set version number ────────────────────────────────
       - name: Set version
-        id: version
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -53,17 +52,24 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
-      # ── 6. Analyse project ────────────────────────────────────
-      - name: Analyse project
-        run: flutter analyze --no-fatal-infos
-        continue-on-error: true
+      # ── 6. Generate Windows platform files ───────────────────
+      # This creates the windows/ folder with all required build
+      # files if they are missing or empty in the repository
+      - name: Generate Windows platform files
+        run: flutter create --platforms=windows .
 
-      # ── 7. Build Windows release ──────────────────────────────
+      # ── 7. Create assets directory if missing ─────────────────
+      # Prevents the pubspec asset warning from breaking the build
+      - name: Create assets directory
+        shell: bash
+        run: mkdir -p assets/images
+
+      # ── 8. Build Windows release ──────────────────────────────
       - name: Build Windows release
         run: |
           flutter build windows --release --build-name=${{ env.VERSION }} --build-number=${{ github.run_number }}
 
-      # ── 8. Verify build output ────────────────────────────────
+      # ── 9. Verify build output ────────────────────────────────
       - name: Verify build output
         shell: bash
         run: |
@@ -74,19 +80,22 @@ jobs:
           echo "Build successful:"
           ls -la build/windows/x64/runner/Release/
 
-      # ── 9. Install Inno Setup ─────────────────────────────────
+      # ── 10. Install Inno Setup ────────────────────────────────
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
 
-      # ── 10. Create installer output directory ─────────────────
+      # ── 11. Create installer output directory ─────────────────
       - name: Create installer output directory
+        shell: bash
         run: mkdir -p installer/output
 
-      # ── 11. Generate Inno Setup script ────────────────────────
+      # ── 12. Generate Inno Setup script ────────────────────────
       - name: Generate Inno Setup script
         shell: bash
         run: |
           BUILD_DIR="$(pwd)/build/windows/x64/runner/Release"
+          # Convert forward slashes to backslashes for Inno Setup
+          BUILD_DIR_WIN="${BUILD_DIR//\//\\}"
           cat > installer/setup.iss << EOF
           #define MyAppName "VSLA Desktop"
           #define MyAppVersion "${{ env.VERSION }}"
@@ -121,7 +130,7 @@ jobs:
           Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
 
           [Files]
-          Source: "${BUILD_DIR}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+          Source: "${BUILD_DIR_WIN}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
           [Icons]
           Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -138,7 +147,7 @@ jobs:
           echo "Generated setup.iss:"
           cat installer/setup.iss
 
-      # ── 12. Compile installer ─────────────────────────────────
+      # ── 13. Compile installer ─────────────────────────────────
       - name: Compile Inno Setup installer
         shell: cmd
         run: |
@@ -148,7 +157,7 @@ jobs:
             exit /b 1
           )
 
-      # ── 13. Verify installer was created ──────────────────────
+      # ── 14. Verify installer was created ──────────────────────
       - name: Verify installer
         shell: bash
         run: |
@@ -163,8 +172,7 @@ jobs:
           echo "INSTALLER_NAME=$(basename $INSTALLER)" >> $GITHUB_ENV
           echo "Installer ready: $INSTALLER"
 
-      # ── 14. Upload installer as artifact ──────────────────────
-      # Available in Actions → your run → Artifacts section
+      # ── 15. Upload installer as artifact ──────────────────────
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
@@ -172,7 +180,7 @@ jobs:
           path: installer/output/*.exe
           retention-days: 30
 
-      # ── 15. Create GitHub Release ─────────────────────────────
+      # ── 16. Create GitHub Release ─────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
