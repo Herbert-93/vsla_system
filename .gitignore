@@ -1,0 +1,34 @@
+# Flutter build output - never push these
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+
+# Platform folders you don't need
+linux/
+windows/
+macos/
+web/
+
+# Android sensitive files
+android/app/google-services.json
+android/local.properties
+android/key.properties
+android/.gradle/
+*.keystore
+*.jks
+
+# Firebase sensitive files
+lib/firebase_options.dart
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
