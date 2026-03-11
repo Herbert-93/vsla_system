@@ -65,7 +65,6 @@ jobs:
           Write-Host "=== Contents of Release folder ==="
           Get-ChildItem -Path $releaseDir | Select-Object Name, Length
 
-          # Find the main exe — any .exe directly in Release folder
           $exeFile = Get-ChildItem -Path $releaseDir -Filter "*.exe" -File | Select-Object -First 1
 
           if ($null -eq $exeFile) {
@@ -74,11 +73,8 @@ jobs:
           }
 
           Write-Host "Found exe: $($exeFile.Name)"
-          Write-Host "Release dir: $releaseDir"
-
-          # Save to environment for next steps
-          "EXE_NAME=$($exeFile.Name)"    | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "RELEASE_DIR=$releaseDir"       | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "EXE_NAME=$($exeFile.Name)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_DIR=$releaseDir"   | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
@@ -89,55 +85,58 @@ jobs:
       - name: Generate Inno Setup script
         shell: pwsh
         run: |
-          $exeName   = "${{ env.EXE_NAME }}"
+          $exeName    = "${{ env.EXE_NAME }}"
           $releaseDir = "${{ env.RELEASE_DIR }}"
-          $version   = "${{ env.VERSION }}"
-          $absDir    = (Resolve-Path $releaseDir).Path
+          $version    = "${{ env.VERSION }}"
+          $absDir     = (Resolve-Path $releaseDir).Path
 
-          $issContent = @"
-[Setup]
-AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
-AppName=VSLA Desktop
-AppVersion=$version
-AppPublisher=VSLA
-DefaultDirName={autopf}\VSLA Desktop
-DefaultGroupName=VSLA Desktop
-AllowNoIcons=yes
-OutputDir=installer\output
-OutputBaseFilename=VSLA-Desktop-Setup-v$version
-Compression=lzma2/ultra64
-SolidCompression=yes
-WizardStyle=modern
-DisableProgramGroupPage=yes
-UninstallDisplayIcon={app}\$exeName
-UninstallDisplayName=VSLA Desktop
-MinVersion=10.0
-ArchitecturesInstallIn64BitMode=x64
-PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+          # AppId written separately to avoid YAML parsing the braces
+          $appId = '{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}'
 
-[Languages]
-Name: "english"; MessagesFile: "compiler:Default.isl"
+          $lines = @(
+            '[Setup]',
+            "AppId=$appId",
+            'AppName=VSLA Desktop',
+            "AppVersion=$version",
+            'AppPublisher=VSLA',
+            'DefaultDirName={autopf}\VSLA Desktop',
+            'DefaultGroupName=VSLA Desktop',
+            'AllowNoIcons=yes',
+            'OutputDir=installer\output',
+            "OutputBaseFilename=VSLA-Desktop-Setup-v$version",
+            'Compression=lzma2/ultra64',
+            'SolidCompression=yes',
+            'WizardStyle=modern',
+            'DisableProgramGroupPage=yes',
+            "UninstallDisplayIcon={app}\$exeName",
+            'UninstallDisplayName=VSLA Desktop',
+            'MinVersion=10.0',
+            'ArchitecturesInstallIn64BitMode=x64',
+            'PrivilegesRequired=lowest',
+            'PrivilegesRequiredOverridesAllowed=dialog',
+            '',
+            '[Languages]',
+            'Name: "english"; MessagesFile: "compiler:Default.isl"',
+            '',
+            '[Tasks]',
+            'Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked',
+            '',
+            '[Files]',
+            "Source: `"$absDir\*`"; DestDir: `"{app}`"; Flags: ignoreversion recursesubdirs createallsubdirs",
+            '',
+            '[Icons]',
+            'Name: "{group}\VSLA Desktop"; Filename: "{app}\' + $exeName + '"',
+            'Name: "{group}\Uninstall VSLA Desktop"; Filename: "{uninstallexe}"',
+            'Name: "{autodesktop}\VSLA Desktop"; Filename: "{app}\' + $exeName + '"; Tasks: desktopicon',
+            '',
+            '[Run]',
+            'Filename: "{app}\' + $exeName + '"; Description: "Launch VSLA Desktop"; Flags: nowait postinstall skipifsilent',
+            '',
+            '[UninstallRun]',
+            'Filename: "{cmd}"; Parameters: "/C taskkill /IM ' + $exeName + ' /F"; Flags: runhidden; RunOnceId: "KillApp"'
+          )
 
-[Tasks]
-Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
-
-[Files]
-Source: "$absDir\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-
-[Icons]
-Name: "{group}\VSLA Desktop"; Filename: "{app}\$exeName"
-Name: "{group}\Uninstall VSLA Desktop"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\VSLA Desktop"; Filename: "{app}\$exeName"; Tasks: desktopicon
-
-[Run]
-Filename: "{app}\$exeName"; Description: "Launch VSLA Desktop"; Flags: nowait postinstall skipifsilent
-
-[UninstallRun]
-Filename: "{cmd}"; Parameters: "/C taskkill /IM $exeName /F"; Flags: runhidden; RunOnceId: "KillApp"
-"@
-
-          $issContent | Out-File -FilePath "installer\setup.iss" -Encoding utf8
+          $lines | Out-File -FilePath "installer\setup.iss" -Encoding utf8
           Write-Host "=== Generated setup.iss ==="
           Get-Content "installer\setup.iss"
 
@@ -150,7 +149,7 @@ Filename: "{cmd}"; Parameters: "/C taskkill /IM $exeName /F"; Flags: runhidden; 
             exit /b 1
           )
 
-      - name: Verify and set installer path
+      - name: Verify installer
         shell: pwsh
         run: |
           $installers = Get-ChildItem -Path "installer\output" -Filter "*.exe" -ErrorAction SilentlyContinue
@@ -160,7 +159,6 @@ Filename: "{cmd}"; Parameters: "/C taskkill /IM $exeName /F"; Flags: runhidden; 
           }
           $installer = $installers[0]
           Write-Host "Installer ready: $($installer.FullName)"
-          Write-Host "Size: $($installer.Length / 1MB) MB"
           "INSTALLER_NAME=$($installer.Name)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Upload installer artifact
